@@ -1,7 +1,20 @@
-import type { GoogleGenAI } from '@google/genai';
 import { Alert } from '../types';
 
-let ai: GoogleGenAI | null = null;
+// Define the interface for the Gemini AI class instance to maintain type safety
+// without needing to resolve the module at build time.
+interface GenAI {
+  models: {
+    generateContent(params: {
+      model: string;
+      contents: string;
+    }): Promise<{ text: string }>;
+  };
+}
+
+// Define the constructor type for the GoogleGenAI class.
+type GoogleGenAIConstructor = new (config: { apiKey: string }) => GenAI;
+
+let ai: GenAI | null = null;
 let isInitializing = false;
 let apiKeyIsConfigured = false;
 
@@ -37,7 +50,7 @@ export const isApiKeyConfigured = apiKeyIsConfigured;
 
 // LAZY-LOAD & INITIALIZE THE AI CLIENT
 // This prevents the SDK from loading on page start, which was the cause of the crash.
-const getAiInstance = async (): Promise<GoogleGenAI | null> => {
+const getAiInstance = async (): Promise<GenAI | null> => {
   if (!apiKeyIsConfigured) return null;
   if (ai) return ai;
 
@@ -49,8 +62,14 @@ const getAiInstance = async (): Promise<GoogleGenAI | null> => {
 
   isInitializing = true;
   try {
-    // Dynamically import the SDK only when it's first needed.
-    const { GoogleGenAI } = await import('@google/genai');
+    // Dynamically import the SDK using the full CDN URL to resolve Vite's issue.
+    const genaiModule = await import('https://aistudiocdn.com/google-genai-sdk@0.0.3');
+    const GoogleGenAI: GoogleGenAIConstructor = genaiModule.GoogleGenAI;
+    
+    if (!GoogleGenAI) {
+        throw new Error("GoogleGenAI class not found in the imported module.");
+    }
+    
     ai = new GoogleGenAI({ apiKey: apiKey as string });
     return ai;
   } catch (error) {
